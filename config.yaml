@@ -34,6 +34,13 @@ model_list:
       model: "groq/*"
       api_key: os.environ/GROQ_API_KEY
 
+  # Cloudflare
+  - model_name: "cloudflare/*"
+    litellm_params:
+      model: "cloudflare/*"
+      api_key: os.environ/CLOUDFLARE_API_KEY
+      api_base: os.environ/CLOUDFLARE_API_BASE
+    
 litellm_settings:
   # set_verbose: True  # Uncomment this if you want to see verbose logs; not recommended in production
   drop_params: True
