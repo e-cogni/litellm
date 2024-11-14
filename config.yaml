@@ -40,9 +40,6 @@ model_list:
       model: "cloudflare/@cf/facebook/bart-large-cnn"
       api_key: os.environ/CLOUDFLARE_API_KEY
       api_base: os.environ/CLOUDFLARE_API_BASE
-    model_info:
-      mode: text_generation
-      base_model: bart-large-cnn
     
 litellm_settings:
   # set_verbose: True  # Uncomment this if you want to see verbose logs; not recommended in production
