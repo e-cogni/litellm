@@ -22,6 +22,9 @@ services:
     ###############################################
     networks:
       - dokploy-network
+    env_file:
+      - .env
+
     labels:
       - traefik.enable=true
       - traefik.http.routers.${HASH}.entrypoints=websecure
