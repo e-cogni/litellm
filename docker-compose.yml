@@ -8,8 +8,8 @@ services:
     image: ghcr.io/berriai/litellm:main-stable
     #########################################
     ## Uncomment these lines to start proxy with a config.yaml file ##
-    # volumes:
-    #  - ./config.yaml:/app/config.yaml <<- this is missing in the docker-compose file currently
+    volumes:
+     - ./config.yaml:/app/config.yaml
     # The below two are my suggestion
     # command:
     #  - "--config=/app/config.yaml"
@@ -18,27 +18,10 @@ services:
     ## Uncomment these lines to start proxy with a config.yaml file ##
     # volumes:
     ###############################################
-    ports:
-      - "4000:4000" # Map the container port to the host, change the host port if necessary
     environment:
-        DATABASE_URL: "postgresql://llmproxy:dbpassword9090@db:5432/litellm"
+        DATABASE_URL: "${DATABASE_URL}"
         STORE_MODEL_IN_DB: "True" # allows adding models to proxy via UI
-    env_file:
-      - .env # Load local .env file
 
- 
-  db:
-    image: postgres
-    restart: always
-    environment:
-      POSTGRES_DB: litellm
-      POSTGRES_USER: llmproxy
-      POSTGRES_PASSWORD: dbpassword9090
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -d litellm -U llmproxy"]
-      interval: 1s
-      timeout: 5s
-      retries: 10
   
   prometheus:
     image: prom/prometheus
@@ -54,8 +37,10 @@ services:
     restart: always
 
 volumes:
-  prometheus_data:
-    driver: local
+  prometheus_data: {}
 
+networks:
+  dokploy-network:
+    external: true
 
 # ...rest of your docker-compose config if any
