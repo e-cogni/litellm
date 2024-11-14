@@ -37,7 +37,7 @@ model_list:
   # Cloudflare
   - model_name: "cloudflare/bart-large-cnn"
     litellm_params:
-      model: "@cf/facebook/bart-large-cnn"
+      model: "cloudflare/@cf/facebook/bart-large-cnn"
       api_key: os.environ/CLOUDFLARE_API_KEY
       api_base: os.environ/CLOUDFLARE_API_BASE
     model_info:
