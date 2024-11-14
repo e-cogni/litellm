@@ -13,8 +13,8 @@ services:
     # The below two are my suggestion
     command:
      - "--config=/app/config.yaml"
-     - "--port=4000"
-     - "num_workers=8"
+     - "--port=${PROXY_PORT}"
+     - "num_workers=${NUM_WORKERS}"
     ##############################################
     #########################################
     ## Uncomment these lines to start proxy with a config.yaml file ##
