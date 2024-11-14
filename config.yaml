@@ -1,11 +1,17 @@
 model_list:
-  
+  - model_name: openai-dall-e-3
+    litellm_params:
+      model: dall-e-3
 
   # provider specific wildcard routing
   - model_name: "groq/*"
     litellm_params:
       model: "groq/*"
       api_key: os.environ/GROQ_API_KEY
+  - model_name: "opeain/*"
+    litellm_params:
+      model: "openai/*"
+      api_key: os.environ/OPENAI_API_KEY
 litellm_settings:
   # set_verbose: True  # Uncomment this if you want to see verbose logs; not recommended in production
   drop_params: True
