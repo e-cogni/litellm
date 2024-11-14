@@ -11,18 +11,23 @@ services:
     volumes:
      - ./config.yaml:/app/config.yaml
     # The below two are my suggestion
-    # command:
-    #  - "--config=/app/config.yaml"
+    command:
+     - "--config=/app/config.yaml"
+     - "--port=4000"
+     - "num_workers=8"
     ##############################################
     #########################################
     ## Uncomment these lines to start proxy with a config.yaml file ##
     # volumes:
     ###############################################
-    environment:
-        DATABASE_URL: "${DATABASE_URL}"
-        STORE_MODEL_IN_DB: "True" # allows adding models to proxy via UI
     networks:
       - dokploy-network
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.${HASH}.entrypoints=websecure
+      - traefik.http.routers.${HASH}.tls.certResolver=cloudflare
+      - traefik.http.routers.${HASH}.rule=Host(`${PROXY_HOST}`)
+      - traefik.http.services.${HASH}.loadbalancer.server.port=${PROXY_PORT}
   
   prometheus:
     image: prom/prometheus
