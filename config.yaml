@@ -6,9 +6,6 @@ model_list:
     litellm_params:
       model: "groq/*"
       api_key: os.environ/GROQ_API_KEY
-  - model_name: gpt-instruct # [PROD TEST] - tests if `/health` automatically infers this to be a text completion model
-    litellm_params:
-      model: text-completion-openai/gpt-3.5-turbo-instruct
 litellm_settings:
   # set_verbose: True  # Uncomment this if you want to see verbose logs; not recommended in production
   drop_params: True
@@ -54,7 +51,7 @@ router_settings:
   redis_host: os.environ/REDIS_HOST
   redis_password: os.environ/REDIS_PASSWORD
   redis_port: os.environ/REDIS_PORT
-  enable_pre_call_checks: true
+#  enable_pre_call_checks: true
 #  model_group_alias: {"my-special-fake-model-alias-name": "fake-openai-endpoint-3"} 
 
 general_settings: 
