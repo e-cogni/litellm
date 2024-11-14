@@ -1,18 +1,18 @@
 model_list:
-  - model_name: openai-dall-e-3
-    litellm_params:
-      model: openai/dall-e-3
-      api_key: os.environ/OPENAI_API_KEY
-    model_info:
-      mode: image_generation
-      base_model: dall-e-3
-  - model_name: openai-dall-e-2
-    litellm_params:
-      model: openai/dall-e-2
-      api_key: os.environ/OPENAI_API_KEY
-    model_info:
-      mode: image_generation
-      base_model: dall-e-2
+#  - model_name: openai-dall-e-3
+#    litellm_params:
+#      model: openai/dall-e-3
+#      api_key: os.environ/OPENAI_API_KEY
+#    model_info:
+#      mode: image_generation
+#      base_model: dall-e-3
+#  - model_name: openai-dall-e-2
+#    litellm_params:
+#      model: openai/dall-e-2
+#      api_key: os.environ/OPENAI_API_KEY
+#    model_info:
+#      mode: image_generation
+#      base_model: dall-e-2
   - model_name: gpt-3.5-turbo
     litellm_params:
       model: openai/gpt-3.5-turbo   
@@ -35,11 +35,14 @@ model_list:
       api_key: os.environ/GROQ_API_KEY
 
   # Cloudflare
-  - model_name: "cloudflare/*"
+  - model_name: "cloudflare/bart-large-cnn"
     litellm_params:
-      model: "cloudflare/*"
+      model: "@cf/facebook/bart-large-cnn"
       api_key: os.environ/CLOUDFLARE_API_KEY
       api_base: os.environ/CLOUDFLARE_API_BASE
+    model_info:
+      mode: text_generation
+      base_model: bart-large-cnn
     
 litellm_settings:
   # set_verbose: True  # Uncomment this if you want to see verbose logs; not recommended in production
@@ -48,7 +51,8 @@ litellm_settings:
   # budget_duration: 30d
   num_retries: 5
   request_timeout: 600
-  telemetry: False
+  telemetry: True
+  cache: True
 #  context_window_fallbacks: [{"llama3-8b": ["llama3-8b-8192"]}]
  # default_team_settings: 
  #   - team_id: team-1
