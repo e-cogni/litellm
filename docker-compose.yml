@@ -21,20 +21,21 @@ services:
     environment:
         DATABASE_URL: "${DATABASE_URL}"
         STORE_MODEL_IN_DB: "True" # allows adding models to proxy via UI
-
+    networks:
+      - dokploy-network
   
   prometheus:
     image: prom/prometheus
     volumes:
       - prometheus_data:/prometheus
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
-    ports:
-      - "9090:9090"
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
       - '--storage.tsdb.retention.time=15d'
-    restart: always
+    restart: unless-stopped
+    networks:
+      - dokploy-network
 
 volumes:
   prometheus_data: {}
