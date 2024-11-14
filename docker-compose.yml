@@ -29,22 +29,6 @@ services:
       - traefik.http.routers.${HASH}.rule=Host(`${PROXY_HOST}`)
       - traefik.http.services.${HASH}.loadbalancer.server.port=${PROXY_PORT}
   
-  prometheus:
-    image: prom/prometheus
-    volumes:
-      - prometheus_data:/prometheus
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--storage.tsdb.retention.time=15d'
-    restart: unless-stopped
-    networks:
-      - dokploy-network
-
-volumes:
-  prometheus_data: {}
-
 networks:
   dokploy-network:
     external: true
