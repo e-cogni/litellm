@@ -34,10 +34,17 @@ model_list:
       model: "groq/*"
       api_key: os.environ/GROQ_API_KEY
 
-  # Cloudflare
-  - model_name: "cloudflare/bart-large-cnn"
+# Cloudflare
+  - model_name: "lama-3.2-11b-vision"
     litellm_params:
-      model: "openai/@cf/facebook/bart-large-cnn"
+      model: "openai/@cf/meta/llama-3.2-11b-vision-instruct"
+      api_key: os.environ/CLOUDFLARE_API_KEY
+      api_base: os.environ/CLOUDFLARE_API_BASE
+    model_info:
+      supports_vision: True
+  - model_name: "llama-3.2-3b"
+    litellm_params:
+      model: "openai/@cf/meta/llama-3.2-3b-instruct"
       api_key: os.environ/CLOUDFLARE_API_KEY
       api_base: os.environ/CLOUDFLARE_API_BASE
   - model_name: "cloudflare/llama-2-7b-chat-fp16"
@@ -46,6 +53,11 @@ model_list:
       api_key: os.environ/CLOUDFLARE_API_KEY
       api_base: os.environ/CLOUDFLARE_API_BASE    
 
+#Github
+  - model_name: "gpt-4o"
+    litellm_params:
+      model: "github/gpt-4o"
+      api_key: os.environ/GITHUB_API_KEY
 
 
 litellm_settings:
