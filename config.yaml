@@ -73,6 +73,10 @@ model_list:
     litellm_params:
       model: "github/Cohere-command-r-plus-08-2024"
       api_key: os.environ/GITHUB_API_KEY
+  - model_name: "phi-3"
+    litellm_params:
+      model: "github/Phi-3-medium-128k-instruct"
+      api_key: os.environ/GITHUB_API_KEY
   - model_name: "phi-3.5-MoE"
     litellm_params:
       model: "github/Phi-3.5-MoE-instruct"
