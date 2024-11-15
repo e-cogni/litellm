@@ -58,7 +58,10 @@ model_list:
     litellm_params:
       model: "github/gpt-4o"
       api_key: os.environ/GITHUB_API_KEY
-
+  - model_name: "jamba"
+    litellm_params:
+      model: "github/AI21-Jamba-1.5-Large"
+      api_key: os.environ/GITHUB_API_KEY
 
 litellm_settings:
   # set_verbose: True  # Uncomment this if you want to see verbose logs; not recommended in production
