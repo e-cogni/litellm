@@ -57,7 +57,7 @@ model_list:
       model: "openai/@hf/mistral/mistral-7b-instruct-v0.2"
       api_key: os.environ/CLOUDFLARE_API_KEY
       api_base: os.environ/CLOUDFLARE_API_BASE
-  - model_name: "lama-3.2-11b"
+  - model_name: "llama-3.2-11b"
     litellm_params:
       model: "openai/@cf/meta/llama-3.2-11b-vision-instruct"
       api_key: os.environ/CLOUDFLARE_API_KEY
@@ -78,6 +78,10 @@ model_list:
       api_base: os.environ/CLOUDFLARE_API_BASE    
 
 #Github
+  - model_name: "mistral-large"
+    litellm_params:
+      model: "github/Mistral-large-2407"
+      api_key: os.environ/GITHUB_API_KEY
   - model_name: "cohere-plus"
     litellm_params:
       model: "github/Cohere-command-r-plus-08-2024"
@@ -93,6 +97,12 @@ model_list:
   - model_name: "gpt-4o"
     litellm_params:
       model: "github/gpt-4o"
+      api_key: os.environ/GITHUB_API_KEY
+    model_info:
+      supports_vision: True
+  - model_name: "gpt-4o-mini"
+    litellm_params:
+      model: "github/gpt-4o-mini"
       api_key: os.environ/GITHUB_API_KEY
     model_info:
       supports_vision: True
