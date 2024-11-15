@@ -41,6 +41,7 @@ model_list:
       api_key: os.environ/CLOUDFLARE_API_KEY
       api_base: os.environ/CLOUDFLARE_API_BASE
     model_info:
+      mode: image_generation
       supports_vision: True
   - model_name: "llama-3.2-3b"
     litellm_params:
@@ -58,6 +59,8 @@ model_list:
     litellm_params:
       model: "github/gpt-4o"
       api_key: os.environ/GITHUB_API_KEY
+    model_info:
+      supports_vision: True
   - model_name: "jamba"
     litellm_params:
       model: "github/AI21-Jamba-1.5-Large"
