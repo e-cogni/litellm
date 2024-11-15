@@ -45,6 +45,7 @@ model_list:
     litellm_params:
       model: "openai/@cf/microsoft/phi-2"
       api_key: os.environ/CLOUDFLARE_API_KEY
+      api_base: os.environ/CLOUDFLARE_API_BASE
   - model_name: "starling-lm-7b"
     litellm_params:
       model: "openai/@hf/nexusflow/starling-lm-7b-beta"
