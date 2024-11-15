@@ -35,19 +35,33 @@ model_list:
       api_key: os.environ/GROQ_API_KEY
 
 # Cloudflare
+  - model_name: "bge-large"
+    litellm_params:
+      model: "openai/@cf/baai/bge-large-en-v1.5"
+      api_key: os.environ/CLOUDFLARE_API_KEY
+      api_base: os.environ/CLOUDFLARE_API_BASE
+    model_info:
+      mode: embedding
+  - model_name: "mistral-7b"
+    litellm_params:
+      model: "openai/@hf/mistral/mistral-7b-instruct-v0.2"
+      api_key: os.environ/CLOUDFLARE_API_KEY
+      api_base: os.environ/CLOUDFLARE_API_BASE
   - model_name: "lama-3.2-11b-vision"
     litellm_params:
       model: "openai/@cf/meta/llama-3.2-11b-vision-instruct"
       api_key: os.environ/CLOUDFLARE_API_KEY
       api_base: os.environ/CLOUDFLARE_API_BASE
     model_info:
-      mode: image_generation
+      mode: completion
       supports_vision: True
   - model_name: "llama-3.2-3b"
     litellm_params:
       model: "openai/@cf/meta/llama-3.2-3b-instruct"
       api_key: os.environ/CLOUDFLARE_API_KEY
       api_base: os.environ/CLOUDFLARE_API_BASE
+    model_info:
+      mode: completion
   - model_name: "cloudflare/llama-2-7b-chat-fp16"
     litellm_params:
       model: "openai/@cf/meta/llama-2-7b-chat-fp16"
