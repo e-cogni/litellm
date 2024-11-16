@@ -117,7 +117,7 @@ litellm_settings:
   # max_budget: 100 
   # budget_duration: 30d
   num_retries: 5
-  request_timeout: 600
+  request_timeout: 120
   telemetry: True
   cache: True
   #callbacks: ["langfuse"]
@@ -162,6 +162,7 @@ router_settings:
   redis_host: os.environ/REDIS_HOST
   redis_password: os.environ/REDIS_PASSWORD
   redis_port: os.environ/REDIS_PORT
+  timeout: 120
 #  enable_pre_call_checks: true
 #  model_group_alias: {"my-special-fake-model-alias-name": "fake-openai-endpoint-3"} 
 
