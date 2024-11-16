@@ -58,7 +58,7 @@ model_list:
       model: "openai/@hf/mistral/mistral-7b-instruct-v0.2"
       api_key: os.environ/CLOUDFLARE_API_KEY
       api_base: os.environ/CLOUDFLARE_API_BASE
-  - model_name: "llama-3.2-11b"
+  - model_name: "cf/llama-3.2-11b"
     litellm_params:
       model: "openai/@cf/meta/llama-3.2-11b-vision-instruct"
       api_key: os.environ/CLOUDFLARE_API_KEY
