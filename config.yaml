@@ -121,6 +121,8 @@ litellm_settings:
   telemetry: True
   cache: True
   callbacks: ["otel"]
+  input_callback: ["sentry"]
+  failure_callback: ["sentry"]
 #  context_window_fallbacks: [{"llama3-8b": ["llama3-8b-8192"]}]
  # default_team_settings: 
  #   - team_id: team-1
