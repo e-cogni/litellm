@@ -35,7 +35,6 @@ services:
       - traefik.http.services.${HASH}.loadbalancer.server.port=${PROXY_PORT}
       - traefik.http.routers.${HASH}.service=${HASH}
       - traefik.http.routers.${HASH}.middlewares=${HASH}-timeout
-      - traefik.http.middlewares.${HASH}-timeout.idleTimeout=600s
       - traefik.http.middlewares.${HASH}-timeout.sendTimeout=600s
       - traefik.http.middlewares.${HASH}-timeout.readTimeout=600s
 
