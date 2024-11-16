@@ -70,8 +70,7 @@ model_list:
       model: "openai/@cf/meta/llama-3.2-3b-instruct"
       api_key: os.environ/CLOUDFLARE_API_KEY
       api_base: os.environ/CLOUDFLARE_API_BASE
-    model_info:
-      mode: completion
+      max_tokens: 4096
   - model_name: "llama-2-7b-chat-fp16"
     litellm_params:
       model: "openai/@cf/meta/llama-2-7b-chat-fp16"
@@ -121,6 +120,7 @@ litellm_settings:
   request_timeout: 600
   telemetry: True
   cache: True
+  callbacks: ["otel"]
 #  context_window_fallbacks: [{"llama3-8b": ["llama3-8b-8192"]}]
  # default_team_settings: 
  #   - team_id: team-1
