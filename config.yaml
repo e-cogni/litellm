@@ -121,8 +121,10 @@ litellm_settings:
   telemetry: True
   cache: True
   callbacks: ["langfuse"]
-  input_callback: ["sentry", "langfuse"]
-  failure_callback: ["sentry", "langfuse"]
+  redact_user_api_key_info: true
+  input_callback: ["langfuse"]
+  failure_callback: ["sentry"]
+  success_callback: ["langfuse"]
 #  context_window_fallbacks: [{"llama3-8b": ["llama3-8b-8192"]}]
  # default_team_settings: 
  #   - team_id: team-1
