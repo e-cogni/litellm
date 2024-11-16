@@ -120,9 +120,9 @@ litellm_settings:
   request_timeout: 600
   telemetry: True
   cache: True
-  callbacks: ["otel"]
-  input_callback: ["sentry"]
-  failure_callback: ["sentry"]
+  callbacks: ["otel", "langfuse"]
+  input_callback: ["sentry", "langfuse"]
+  failure_callback: ["sentry", "langfuse"]
 #  context_window_fallbacks: [{"llama3-8b": ["llama3-8b-8192"]}]
  # default_team_settings: 
  #   - team_id: team-1
