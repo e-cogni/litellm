@@ -193,10 +193,11 @@ router_settings:
 general_settings: 
   master_key: os.environ/LITELLM_MASTER_KEY # [OPTIONAL] Use to enforce auth on proxy. See - https://docs.litellm.ai/docs/proxy/virtual_keys
   store_model_in_db: True
+  disable_spend_logs: False
   #proxy_budget_rescheduler_min_time: 60
   #proxy_budget_rescheduler_max_time: 65
   proxy_batch_write_at: 60
-  database_connection_pool_limit: 10
+  database_connection_pool_limit: 20
   database_connection_timeout: 45
   database_url: os.environ/DATABASE_URL # [OPTIONAL] use for token-based auth to proxy
 
