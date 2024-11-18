@@ -91,6 +91,7 @@ class AnthropicConfig:
             "extra_headers",
             "parallel_tool_calls",
             "response_format",
+            "user",
         ]
 
     def get_cache_control_headers(self) -> dict:
@@ -106,6 +107,7 @@ class AnthropicConfig:
         computer_tool_used: bool = False,
         prompt_caching_set: bool = False,
         pdf_used: bool = False,
+        is_vertex_request: bool = False,
     ) -> dict:
         import json
 
@@ -122,8 +124,13 @@ class AnthropicConfig:
             "accept": "application/json",
             "content-type": "application/json",
         }
-        if len(betas) > 0:
+
+        # Don't send any beta headers to Vertex, Vertex has failed requests when they are sent
+        if is_vertex_request is True:
+            pass
+        elif len(betas) > 0:
             headers["anthropic-beta"] = ",".join(betas)
+
         return headers
 
     def _map_tool_choice(
@@ -246,6 +253,28 @@ class AnthropicConfig:
                 anthropic_tools.append(new_tool)
         return anthropic_tools
 
+    def _map_stop_sequences(
+        self, stop: Optional[Union[str, List[str]]]
+    ) -> Optional[List[str]]:
+        new_stop: Optional[List[str]] = None
+        if isinstance(stop, str):
+            if (
+                stop == "\n"
+            ) and litellm.drop_params is True:  # anthropic doesn't allow whitespace characters as stop-sequences
+                return new_stop
+            new_stop = [stop]
+        elif isinstance(stop, list):
+            new_v = []
+            for v in stop:
+                if (
+                    v == "\n"
+                ) and litellm.drop_params is True:  # anthropic doesn't allow whitespace characters as stop-sequences
+                    continue
+                new_v.append(v)
+            if len(new_v) > 0:
+                new_stop = new_v
+        return new_stop
+
     def map_openai_params(
         self,
         non_default_params: dict,
@@ -271,26 +300,10 @@ class AnthropicConfig:
                     optional_params["tool_choice"] = _tool_choice
             if param == "stream" and value is True:
                 optional_params["stream"] = value
-            if param == "stop":
-                if isinstance(value, str):
-                    if (
-                        value == "\n"
-                    ) and litellm.drop_params is True:  # anthropic doesn't allow whitespace characters as stop-sequences
-                        continue
-                    value = [value]
-                elif isinstance(value, list):
-                    new_v = []
-                    for v in value:
-                        if (
-                            v == "\n"
-                        ) and litellm.drop_params is True:  # anthropic doesn't allow whitespace characters as stop-sequences
-                            continue
-                        new_v.append(v)
-                    if len(new_v) > 0:
-                        value = new_v
-                    else:
-                        continue
-                optional_params["stop_sequences"] = value
+            if param == "stop" and (isinstance(value, str) or isinstance(value, list)):
+                _value = self._map_stop_sequences(value)
+                if _value is not None:
+                    optional_params["stop_sequences"] = _value
             if param == "temperature":
                 optional_params["temperature"] = value
             if param == "top_p":
@@ -314,7 +327,8 @@ class AnthropicConfig:
                 optional_params["tools"] = [_tool]
                 optional_params["tool_choice"] = _tool_choice
                 optional_params["json_mode"] = True
-
+            if param == "user":
+                optional_params["metadata"] = {"user_id": value}
         ## VALIDATE REQUEST
         """
         Anthropic doesn't support tool calling without `tools=` param specified.
@@ -395,6 +409,7 @@ class AnthropicConfig:
     def is_pdf_used(self, messages: List[AllMessageValues]) -> bool:
         """
         Set to true if media passed into messages.
+
         """
         for message in messages:
             if (
@@ -465,6 +480,7 @@ class AnthropicConfig:
         model: str,
         messages: List[AllMessageValues],
         optional_params: dict,
+        litellm_params: dict,
         headers: dict,
         _is_function_call: bool,
         is_vertex_request: bool,
@@ -501,6 +517,15 @@ class AnthropicConfig:
         ## Handle Tool Calling
         if "tools" in optional_params:
             _is_function_call = True
+
+        ## Handle user_id in metadata
+        _litellm_metadata = litellm_params.get("metadata", None)
+        if (
+            _litellm_metadata
+            and isinstance(_litellm_metadata, dict)
+            and "user_id" in _litellm_metadata
+        ):
+            optional_params["metadata"] = {"user_id": _litellm_metadata["user_id"]}
 
         data = {
             "messages": anthropic_messages,

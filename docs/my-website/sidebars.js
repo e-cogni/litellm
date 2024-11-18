@@ -36,7 +36,7 @@ const sidebars = {
         {
           type: "category",
           label: "Architecture",
-          items: ["proxy/architecture"],
+          items: ["proxy/architecture", "proxy/db_info"],
         }, 
         {
           type: "link",
@@ -65,12 +65,12 @@ const sidebars = {
         },
         {
           type: "category",
-          label: "Use with Provider SDKs",
+          label: "Pass-through Endpoints (Provider-specific)",
           items: [
             "pass_through/vertex_ai",
             "pass_through/google_ai_studio",
             "pass_through/cohere",
-            "anthropic_completion",
+            "pass_through/anthropic_completion",
             "pass_through/bedrock",
             "pass_through/langfuse"
           ],

@@ -61,15 +61,21 @@ litellm_settings:
 
 Removes any field with `user_api_key_*` from metadata.
 
-## What gets logged? StandardLoggingPayload
+## What gets logged?
 
 Found under `kwargs["standard_logging_object"]`. This is a standard payload, logged for every response.
 
 ```python
+
 class StandardLoggingPayload(TypedDict):
     id: str
+    trace_id: str  # Trace multiple LLM calls belonging to same overall request (e.g. fallbacks/retries)
     call_type: str
     response_cost: float
+    response_cost_failure_debug_info: Optional[
+        StandardLoggingModelCostFailureDebugInformation
+    ]
+    status: StandardLoggingPayloadStatus
     total_tokens: int
     prompt_tokens: int
     completion_tokens: int
@@ -84,13 +90,13 @@ class StandardLoggingPayload(TypedDict):
     metadata: StandardLoggingMetadata
     cache_hit: Optional[bool]
     cache_key: Optional[str]
-    saved_cache_cost: Optional[float]
-    request_tags: list                         
+    saved_cache_cost: float
+    request_tags: list
     end_user: Optional[str]
-    requester_ip_address: Optional[str]         # IP address of requester
-    requester_metadata: Optional[dict]          # metadata passed in request in the "metadata" field
+    requester_ip_address: Optional[str]
     messages: Optional[Union[str, list, dict]]
     response: Optional[Union[str, list, dict]]
+    error_str: Optional[str]
     model_parameters: dict
     hidden_params: StandardLoggingHiddenParams
 
@@ -99,13 +105,53 @@ class StandardLoggingHiddenParams(TypedDict):
     cache_key: Optional[str]
     api_base: Optional[str]
     response_cost: Optional[str]
-    additional_headers: Optional[dict]
+    additional_headers: Optional[StandardLoggingAdditionalHeaders]
 
+class StandardLoggingAdditionalHeaders(TypedDict, total=False):
+    x_ratelimit_limit_requests: int
+    x_ratelimit_limit_tokens: int
+    x_ratelimit_remaining_requests: int
+    x_ratelimit_remaining_tokens: int
+
+class StandardLoggingMetadata(StandardLoggingUserAPIKeyMetadata):
+    """
+    Specific metadata k,v pairs logged to integration for easier cost tracking
+    """
+
+    spend_logs_metadata: Optional[
+        dict
+    ]  # special param to log k,v pairs to spendlogs for a call
+    requester_ip_address: Optional[str]
+    requester_metadata: Optional[dict]
 
 class StandardLoggingModelInformation(TypedDict):
     model_map_key: str
     model_map_value: Optional[ModelInfo]
+  
+
+StandardLoggingPayloadStatus = Literal["success", "failure"]
+
+class StandardLoggingModelCostFailureDebugInformation(TypedDict, total=False):
+    """
+    Debug information, if cost tracking fails.
+
+    Avoid logging sensitive information like response or optional params
+    """
+
+    error_str: Required[str]
+    traceback_str: Required[str]
+    model: str
+    cache_hit: Optional[bool]
+    custom_llm_provider: Optional[str]
+    base_model: Optional[str]
+    call_type: str
+    custom_pricing: Optional[bool]
 ```
+
+## Conditional Logging for Virtual Keys / Teams
+
+[👉 Tutorial - Allow each team to use their own Langfuse Project / custom callbacks](team_logging)
+
 
 ## Langfuse
 
@@ -259,40 +305,7 @@ print(response)
 </TabItem>
 </Tabs>
 
-### Team based Logging to Langfuse
-
-[👉 Tutorial - Allow each team to use their own Langfuse Project / custom callbacks](team_logging)
-<!-- 
-
-**Example:**
-
-This config would send langfuse logs to 2 different langfuse projects, based on the team id 
-
-```yaml
-litellm_settings:
-  default_team_settings: 
-    - team_id: my-secret-project
-      success_callback: ["langfuse"]
-      langfuse_public_key: os.environ/LANGFUSE_PUB_KEY_1 # Project 1
-      langfuse_secret: os.environ/LANGFUSE_PRIVATE_KEY_1 # Project 1
-    - team_id: ishaans-secret-project
-      success_callback: ["langfuse"]
-      langfuse_public_key: os.environ/LANGFUSE_PUB_KEY_2 # Project 2
-      langfuse_secret: os.environ/LANGFUSE_SECRET_2 # Project 2
-```
-
-Now, when you [generate keys](./virtual_keys.md) for this team-id 
-
-```bash
-curl -X POST 'http://0.0.0.0:4000/key/generate' \
--H 'Authorization: Bearer sk-1234' \
--H 'Content-Type: application/json' \
--d '{"team_id": "ishaans-secret-project"}'
-```
-
-All requests made with these keys will log data to their team-specific logging. -->
-
-### Redacting Messages, Response Content from Langfuse Logging 
+### Redact Messages, Response Content
 
 Set `litellm.turn_off_message_logging=True` This will prevent the messages and responses from being logged to langfuse, but request metadata will still be logged.
 
@@ -325,7 +338,7 @@ curl --location 'http://0.0.0.0:4000/chat/completions' \
 ```
 
 
-### LiteLLM-specific Tags on Langfuse - `cache_hit`, `cache_key`
+### LiteLLM Tags - `cache_hit`, `cache_key`
 
 Use this if you want to control which LiteLLM-specific fields are logged as tags by the LiteLLM proxy. By default LiteLLM Proxy logs no LiteLLM-specific fields
 
@@ -360,7 +373,7 @@ litellm_settings:
   langfuse_default_tags: ["cache_hit", "cache_key", "proxy_base_url", "user_api_key_alias", "user_api_key_user_id", "user_api_key_user_email", "user_api_key_team_alias", "semantic-similarity", "proxy_base_url"]
 ```
 
-### 🔧 Debugging - Viewing RAW CURL sent from LiteLLM to provider
+### View POST sent from LiteLLM to provider
 
 Use this when you want to view the RAW curl request sent from LiteLLM to the LLM API 
 
@@ -463,7 +476,7 @@ You will see `raw_request` in your Langfuse Metadata. This is the RAW CURL comma
 
 <Image img={require('../../img/debug_langfuse.png')} />
 
-## OpenTelemetry format
+## OpenTelemetry
 
 :::info 
 
@@ -745,7 +758,7 @@ curl --location 'http://0.0.0.0:4000/chat/completions' \
 
 ** 🎉 Expect to see this trace logged in your OTEL collector**
 
-### Redacting Messages, Response Content from OTEL Logging
+### Redacting Messages, Response Content
 
 Set `message_logging=False` for `otel`, no messages / response will be logged
 
@@ -759,7 +772,8 @@ callback_settings:
     message_logging: False
 ```
 
-### Context propagation across Services `Traceparent HTTP Header`
+### Traceparent Header
+##### Context propagation across Services `Traceparent HTTP Header`
 
 ❓ Use this when you want to **pass information about the incoming request in a distributed tracing system**
 
@@ -809,7 +823,7 @@ Search for Trace=`80e1afed08e019fc1110464cfa66635c` on your OTEL Collector
 
 <Image img={require('../../img/otel_parent.png')} />
 
-### Forwarding `Traceparent HTTP Header` to LLM APIs
+##### Forwarding `Traceparent HTTP Header` to LLM APIs
 
 Use this if you want to forward the traceparent headers to your self hosted LLMs like vLLM
 
@@ -1054,7 +1068,7 @@ class MyCustomHandler(CustomLogger):
 {'mode': 'embedding', 'input_cost_per_token': 0.002}
 ```
 
-### Logging responses from proxy
+##### Logging responses from proxy
 
 Both `/chat/completions` and `/embeddings` responses are available as `response_obj`
 
@@ -1372,7 +1386,7 @@ export GALILEO_USERNAME=""
 export GALILEO_PASSWORD=""
 ```
 
-### Quick Start 
+#### Quick Start 
 
 1. Add to Config.yaml
 
@@ -1413,7 +1427,7 @@ curl --location 'http://0.0.0.0:4000/chat/completions' \
 
 🎉 That's it - Expect to see your Logs on your Galileo Dashboard
 
-## Logging Proxy Cost + Usage - OpenMeter
+## OpenMeter
 
 Bill customers according to their LLM API usage with [OpenMeter](../observability/openmeter.md)
 
@@ -1425,7 +1439,7 @@ export OPENMETER_API_ENDPOINT="" # defaults to https://openmeter.cloud
 export OPENMETER_API_KEY=""
 ```
 
-### Quick Start 
+##### Quick Start 
 
 1. Add to Config.yaml
 
@@ -1758,7 +1772,10 @@ curl --location 'http://0.0.0.0:4000/chat/completions' \
     }'
 ```
 
-## (BETA) Moderation with Azure Content Safety
+
+<!-- ## (BETA) Moderation with Azure Content Safety
+
+Note: This page is for logging callbacks and this is a moderation service. Commenting until we found a better location for this.
 
 [Azure Content-Safety](https://azure.microsoft.com/en-us/products/ai-services/ai-content-safety) is a Microsoft Azure service that provides content moderation APIs to detect potential offensive, harmful, or risky content in text.
 
@@ -1843,4 +1860,4 @@ litellm_settings:
 :::info
 `thresholds` are not required by default, but you can tune the values to your needs.
 Default values is `4` for all categories
-:::
+::: -->

@@ -17,7 +17,7 @@ import secrets
 import traceback
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import fastapi
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
@@ -31,6 +31,7 @@ from litellm.proxy.auth.auth_checks import (
     get_key_object,
 )
 from litellm.proxy.auth.user_api_key_auth import user_api_key_auth
+from litellm.proxy.hooks.key_management_event_hooks import KeyManagementEventHooks
 from litellm.proxy.management_helpers.utils import management_endpoint_wrapper
 from litellm.proxy.utils import _duration_in_seconds, _hash_token_if_needed
 from litellm.secret_managers.main import get_secret
@@ -234,50 +235,14 @@ async def generate_key_fn(  # noqa: PLR0915
             data.soft_budget
         )  # include the user-input soft budget in the response
 
-        if data.send_invite_email is True:
-            if "email" not in general_settings.get("alerting", []):
-                raise ValueError(
-                    "Email alerting not setup on config.yaml. Please set `alerting=['email']. \nDocs: https://docs.litellm.ai/docs/proxy/email`"
-                )
-            event = WebhookEvent(
-                event="key_created",
-                event_group="key",
-                event_message="API Key Created",
-                token=response.get("token", ""),
-                spend=response.get("spend", 0.0),
-                max_budget=response.get("max_budget", 0.0),
-                user_id=response.get("user_id", None),
-                team_id=response.get("team_id", "Default Team"),
-                key_alias=response.get("key_alias", None),
+        asyncio.create_task(
+            KeyManagementEventHooks.async_key_generated_hook(
+                data=data,
+                response=response,
+                user_api_key_dict=user_api_key_dict,
+                litellm_changed_by=litellm_changed_by,
             )
-
-            # If user configured email alerting - send an Email letting their end-user know the key was created
-            asyncio.create_task(
-                proxy_logging_obj.slack_alerting_instance.send_key_created_or_user_invited_email(
-                    webhook_event=event,
-                )
-            )
-
-        # Enterprise Feature - Audit Logging. Enable with litellm.store_audit_logs = True
-        if litellm.store_audit_logs is True:
-            _updated_values = json.dumps(response, default=str)
-            asyncio.create_task(
-                create_audit_log_for_update(
-                    request_data=LiteLLM_AuditLogs(
-                        id=str(uuid.uuid4()),
-                        updated_at=datetime.now(timezone.utc),
-                        changed_by=litellm_changed_by
-                        or user_api_key_dict.user_id
-                        or litellm_proxy_admin_name,
-                        changed_by_api_key=user_api_key_dict.api_key,
-                        table_name=LitellmTableNames.KEY_TABLE_NAME,
-                        object_id=response.get("token_id", ""),
-                        action="created",
-                        updated_values=_updated_values,
-                        before_value=None,
-                    )
-                )
-            )
+        )
 
         return GenerateKeyResponse(**response)
     except Exception as e:
@@ -323,11 +288,15 @@ def prepare_key_update_data(
             non_default_values["expires"] = expires
 
     if "budget_duration" in non_default_values:
-        duration_s = _duration_in_seconds(
-            duration=non_default_values["budget_duration"]
-        )
-        key_reset_at = datetime.now(timezone.utc) + timedelta(seconds=duration_s)
-        non_default_values["budget_reset_at"] = key_reset_at
+        budget_duration = non_default_values.pop("budget_duration")
+        if (
+            budget_duration
+            and (isinstance(budget_duration, str))
+            and len(budget_duration) > 0
+        ):
+            duration_s = _duration_in_seconds(duration=budget_duration)
+            key_reset_at = datetime.now(timezone.utc) + timedelta(seconds=duration_s)
+            non_default_values["budget_reset_at"] = key_reset_at
 
     _metadata = existing_key_row.metadata or {}
 
@@ -364,7 +333,47 @@ async def update_key_fn(
     ),
 ):
     """
-    Update an existing key
+    Update an existing API key's parameters.
+
+    Parameters:
+    - key: str - The key to update
+    - key_alias: Optional[str] - User-friendly key alias
+    - user_id: Optional[str] - User ID associated with key
+    - team_id: Optional[str] - Team ID associated with key
+    - models: Optional[list] - Model_name's a user is allowed to call
+    - tags: Optional[List[str]] - Tags for organizing keys (Enterprise only)
+    - spend: Optional[float] - Amount spent by key
+    - max_budget: Optional[float] - Max budget for key
+    - model_max_budget: Optional[dict] - Model-specific budgets {"gpt-4": 0.5, "claude-v1": 1.0}
+    - budget_duration: Optional[str] - Budget reset period ("30d", "1h", etc.)
+    - soft_budget: Optional[float] - Soft budget limit (warning vs. hard stop). Will trigger a slack alert when this soft budget is reached.
+    - max_parallel_requests: Optional[int] - Rate limit for parallel requests
+    - metadata: Optional[dict] - Metadata for key. Example {"team": "core-infra", "app": "app2"}
+    - tpm_limit: Optional[int] - Tokens per minute limit
+    - rpm_limit: Optional[int] - Requests per minute limit
+    - model_rpm_limit: Optional[dict] - Model-specific RPM limits {"gpt-4": 100, "claude-v1": 200}
+    - model_tpm_limit: Optional[dict] - Model-specific TPM limits {"gpt-4": 100000, "claude-v1": 200000}
+    - allowed_cache_controls: Optional[list] - List of allowed cache control values
+    - duration: Optional[str] - Key validity duration ("30d", "1h", etc.)
+    - permissions: Optional[dict] - Key-specific permissions
+    - send_invite_email: Optional[bool] - Send invite email to user_id
+    - guardrails: Optional[List[str]] - List of active guardrails for the key
+    - blocked: Optional[bool] - Whether the key is blocked
+
+    Example:
+    ```bash
+    curl --location 'http://0.0.0.0:8000/key/update' \
+    --header 'Authorization: Bearer sk-1234' \
+    --header 'Content-Type: application/json' \
+    --data '{
+        "key": "sk-1234",
+        "key_alias": "my-key",
+        "user_id": "user-1234",
+        "team_id": "team-1234",
+        "max_budget": 100,
+        "metadata": {"any_key": "any-val"},
+    }'
+    ```
     """
     from litellm.proxy.proxy_server import (
         create_audit_log_for_update,
@@ -407,30 +416,15 @@ async def update_key_fn(
             proxy_logging_obj=proxy_logging_obj,
         )
 
-        # Enterprise Feature - Audit Logging. Enable with litellm.store_audit_logs = True
-        if litellm.store_audit_logs is True:
-            _updated_values = json.dumps(data_json, default=str)
-
-            _before_value = existing_key_row.json(exclude_none=True)
-            _before_value = json.dumps(_before_value, default=str)
-
-            asyncio.create_task(
-                create_audit_log_for_update(
-                    request_data=LiteLLM_AuditLogs(
-                        id=str(uuid.uuid4()),
-                        updated_at=datetime.now(timezone.utc),
-                        changed_by=litellm_changed_by
-                        or user_api_key_dict.user_id
-                        or litellm_proxy_admin_name,
-                        changed_by_api_key=user_api_key_dict.api_key,
-                        table_name=LitellmTableNames.KEY_TABLE_NAME,
-                        object_id=data.key,
-                        action="updated",
-                        updated_values=_updated_values,
-                        before_value=_before_value,
-                    )
-                )
+        asyncio.create_task(
+            KeyManagementEventHooks.async_key_updated_hook(
+                data=data,
+                existing_key_row=existing_key_row,
+                response=response,
+                user_api_key_dict=user_api_key_dict,
+                litellm_changed_by=litellm_changed_by,
             )
+        )
 
         if response is None:
             raise ValueError("Failed to update key got response = None")
@@ -481,6 +475,15 @@ async def delete_key_fn(
     Returns:
     - deleted_keys (List[str]): A list of deleted keys. Example {"deleted_keys": ["sk-QWrxEynunsNpV1zT48HIrw", "837e17519f44683334df5291321d97b8bf1098cd490e49e215f6fea935aa28be"]}
 
+    Example:
+    ```bash
+    curl --location 'http://0.0.0.0:8000/key/delete' \
+    --header 'Authorization: Bearer sk-1234' \
+    --header 'Content-Type: application/json' \
+    --data '{
+        "keys": ["sk-QWrxEynunsNpV1zT48HIrw"]
+    }'
+    ```
 
     Raises:
         HTTPException: If an error occurs during key deletion.
@@ -495,6 +498,9 @@ async def delete_key_fn(
             user_api_key_cache,
             user_custom_key_generate,
         )
+
+        if prisma_client is None:
+            raise Exception("Not connected to DB!")
 
         keys = data.keys
         if len(keys) == 0:
@@ -516,45 +522,7 @@ async def delete_key_fn(
         ):
             user_id = None  # unless they're admin
 
-        # Enterprise Feature - Audit Logging. Enable with litellm.store_audit_logs = True
-        # we do this after the first for loop, since first for loop is for validation. we only want this inserted after validation passes
-        if litellm.store_audit_logs is True:
-            # make an audit log for each team deleted
-            for key in data.keys:
-                key_row = await prisma_client.get_data(  # type: ignore
-                    token=key, table_name="key", query_type="find_unique"
-                )
-
-                if key_row is None:
-                    raise ProxyException(
-                        message=f"Key {key} not found",
-                        type=ProxyErrorTypes.bad_request_error,
-                        param="key",
-                        code=status.HTTP_404_NOT_FOUND,
-                    )
-
-                key_row = key_row.json(exclude_none=True)
-                _key_row = json.dumps(key_row, default=str)
-
-                asyncio.create_task(
-                    create_audit_log_for_update(
-                        request_data=LiteLLM_AuditLogs(
-                            id=str(uuid.uuid4()),
-                            updated_at=datetime.now(timezone.utc),
-                            changed_by=litellm_changed_by
-                            or user_api_key_dict.user_id
-                            or litellm_proxy_admin_name,
-                            changed_by_api_key=user_api_key_dict.api_key,
-                            table_name=LitellmTableNames.KEY_TABLE_NAME,
-                            object_id=key,
-                            action="deleted",
-                            updated_values="{}",
-                            before_value=_key_row,
-                        )
-                    )
-                )
-
-        number_deleted_keys = await delete_verification_token(
+        number_deleted_keys, _keys_being_deleted = await delete_verification_token(
             tokens=keys, user_id=user_id
         )
         if number_deleted_keys is None:
@@ -588,6 +556,16 @@ async def delete_key_fn(
             f"/keys/delete - cache after delete: {user_api_key_cache.in_memory_cache.cache_dict}"
         )
 
+        asyncio.create_task(
+            KeyManagementEventHooks.async_key_deleted_hook(
+                data=data,
+                keys_being_deleted=_keys_being_deleted,
+                user_api_key_dict=user_api_key_dict,
+                litellm_changed_by=litellm_changed_by,
+                response=number_deleted_keys,
+            )
+        )
+
         return {"deleted_keys": keys}
     except Exception as e:
         if isinstance(e, HTTPException):
@@ -608,7 +586,10 @@ async def delete_key_fn(
 
 
 @router.post(
-    "/v2/key/info", tags=["key management"], dependencies=[Depends(user_api_key_auth)]
+    "/v2/key/info",
+    tags=["key management"],
+    dependencies=[Depends(user_api_key_auth)],
+    include_in_schema=False,
 )
 async def info_key_fn_v2(
     data: Optional[KeyRequest] = None,
@@ -1026,11 +1007,35 @@ async def generate_key_helper_fn(  # noqa: PLR0915
     return key_data
 
 
-async def delete_verification_token(tokens: List, user_id: Optional[str] = None):
+async def delete_verification_token(
+    tokens: List, user_id: Optional[str] = None
+) -> Tuple[Optional[Dict], List[LiteLLM_VerificationToken]]:
+    """
+    Helper that deletes the list of tokens from the database
+
+    Args:
+        tokens: List of tokens to delete
+        user_id: Optional user_id to filter by
+
+    Returns:
+        Tuple[Optional[Dict], List[LiteLLM_VerificationToken]]:
+            Optional[Dict]:
+                - Number of deleted tokens
+            List[LiteLLM_VerificationToken]:
+                - List of keys being deleted, this contains information about the key_alias, token, and user_id being deleted,
+                this is passed down to the KeyManagementEventHooks to delete the keys from the secret manager and handle audit logs
+    """
     from litellm.proxy.proxy_server import litellm_proxy_admin_name, prisma_client
 
     try:
         if prisma_client:
+            tokens = [_hash_token_if_needed(token=key) for key in tokens]
+            _keys_being_deleted = (
+                await prisma_client.db.litellm_verificationtoken.find_many(
+                    where={"token": {"in": tokens}}
+                )
+            )
+
             # Assuming 'db' is your Prisma Client instance
             # check if admin making request - don't filter by user-id
             if user_id == litellm_proxy_admin_name:
@@ -1060,7 +1065,7 @@ async def delete_verification_token(tokens: List, user_id: Optional[str] = None)
         )
         verbose_proxy_logger.debug(traceback.format_exc())
         raise e
-    return deleted_tokens
+    return deleted_tokens, _keys_being_deleted
 
 
 @router.post(
