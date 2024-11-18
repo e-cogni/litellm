@@ -143,7 +143,7 @@ litellm_settings:
   num_retries: 5
   request_timeout: 120
   telemetry: True
-  cache: True
+  cache: False
   #callbacks: ["langfuse"]
   redact_user_api_key_info: true
   input_callback: ["langfuse"]
@@ -201,16 +201,3 @@ general_settings:
   database_connection_timeout: 45
   database_url: os.environ/DATABASE_URL # [OPTIONAL] use for token-based auth to proxy
 
-  pass_through_endpoints:
-    - path: "/v1/rerank"                                  # route you want to add to LiteLLM Proxy Server
-      target: "https://api.cohere.com/v1/rerank"          # URL this route should forward requests to
-      headers:                                            # headers to forward to this URL
-        content-type: application/json                    # (Optional) Extra Headers to pass to this endpoint 
-        accept: application/json
-      forward_headers: True
-
-#environment_variables:
-  # settings for using redis caching
-#  REDIS_HOST: os.environ/REDIS_HOST
-#  REDIS_PORT: os.environ/REDIS_PORT
-#  REDIS_PASSWORD: os.environ/REDIS_PASSWORD
