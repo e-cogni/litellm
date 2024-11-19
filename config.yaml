@@ -77,7 +77,7 @@ model_list:
       api_key: os.environ/CLOUDFLARE_API_KEY
       api_base: os.environ/CLOUDFLARE_API_BASE    
 
-#Github
+# Github
   - model_name: "llama3-8b"
     litellm_params:
       model: "github/Meta-Llama-3-8B-Instruct"
