@@ -1,5 +1,12 @@
 model_list:
 # OpenAI
+  - model_name: dall-e-3 # alias for dall-e-3
+    litellm_params:
+      model: openai/dall-e-3
+      api_key: os.environ/OPENAI_API_KEY
+    model_info:
+      mode: image_generation
+      base_model: dall-e-3
   - model_name: openai-dall-e-3
     litellm_params:
       model: openai/dall-e-3
@@ -7,6 +14,13 @@ model_list:
     model_info:
       mode: image_generation
       base_model: dall-e-3
+  - model_name: openai-dall-e-2 # alias for dall-e-2
+    litellm_params:
+      model: openai/dall-e-2
+      api_key: os.environ/OPENAI_API_KEY
+    model_info:
+      mode: image_generation
+      base_model: dall-e-2
   - model_name: openai-dall-e-2
     litellm_params:
       model: openai/dall-e-2
