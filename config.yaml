@@ -134,6 +134,13 @@ model_list:
       model: "github/AI21-Jamba-1.5-Large"
       api_key: os.environ/GITHUB_API_KEY
       rpm: 10
+  - model_name: "text-embedding-3-large"
+    litellm_params:
+      model: "github/text-embedding-3-large"
+      api_key: os.environ/GITHUB_API_KEY
+      rpm: 15
+    model_info:
+      mode: embedding
 
 litellm_settings:
   set_verbose: False  # Uncomment this if you want to see verbose logs; not recommended in production
