@@ -29,16 +29,182 @@ from litellm.proxy.auth.auth_checks import (
     _cache_key_object,
     _delete_cache_key_object,
     get_key_object,
+    get_team_object,
 )
 from litellm.proxy.auth.user_api_key_auth import user_api_key_auth
 from litellm.proxy.hooks.key_management_event_hooks import KeyManagementEventHooks
 from litellm.proxy.management_helpers.utils import management_endpoint_wrapper
 from litellm.proxy.utils import (
-    _duration_in_seconds,
     _hash_token_if_needed,
+    duration_in_seconds,
     handle_exception_on_proxy,
 )
 from litellm.secret_managers.main import get_secret
+from litellm.types.utils import PersonalUIKeyGenerationConfig, TeamUIKeyGenerationConfig
+
+
+def _is_team_key(data: GenerateKeyRequest):
+    return data.team_id is not None
+
+
+def _get_user_in_team(
+    team_table: LiteLLM_TeamTableCachedObj, user_id: Optional[str]
+) -> Optional[Member]:
+    if user_id is None:
+        return None
+    for member in team_table.members_with_roles:
+        if member.user_id is not None and member.user_id == user_id:
+            return member
+    return None
+
+
+def _team_key_generation_team_member_check(
+    team_table: LiteLLM_TeamTableCachedObj,
+    user_api_key_dict: UserAPIKeyAuth,
+    team_key_generation: Optional[TeamUIKeyGenerationConfig],
+):
+    if (
+        team_key_generation is None
+        or "allowed_team_member_roles" not in team_key_generation
+    ):
+        return True
+
+    user_in_team = _get_user_in_team(
+        team_table=team_table, user_id=user_api_key_dict.user_id
+    )
+    if user_in_team is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"User={user_api_key_dict.user_id} not assigned to team={team_table.team_id}",
+        )
+
+    if user_in_team.role not in team_key_generation["allowed_team_member_roles"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Team member role {user_in_team.role} not in allowed_team_member_roles={team_key_generation['allowed_team_member_roles']}",
+        )
+    return True
+
+
+def _key_generation_required_param_check(
+    data: GenerateKeyRequest, required_params: Optional[List[str]]
+):
+    if required_params is None:
+        return True
+
+    data_dict = data.model_dump(exclude_unset=True)
+    for param in required_params:
+        if param not in data_dict:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Required param {param} not in data",
+            )
+    return True
+
+
+def _team_key_generation_check(
+    team_table: LiteLLM_TeamTableCachedObj,
+    user_api_key_dict: UserAPIKeyAuth,
+    data: GenerateKeyRequest,
+):
+    if (
+        litellm.key_generation_settings is None
+        or litellm.key_generation_settings.get("team_key_generation") is None
+    ):
+        return True
+
+    _team_key_generation = litellm.key_generation_settings["team_key_generation"]  # type: ignore
+
+    _team_key_generation_team_member_check(
+        team_table=team_table,
+        user_api_key_dict=user_api_key_dict,
+        team_key_generation=_team_key_generation,
+    )
+    _key_generation_required_param_check(
+        data,
+        _team_key_generation.get("required_params"),
+    )
+
+    return True
+
+
+def _personal_key_membership_check(
+    user_api_key_dict: UserAPIKeyAuth,
+    personal_key_generation: Optional[PersonalUIKeyGenerationConfig],
+):
+    if (
+        personal_key_generation is None
+        or "allowed_user_roles" not in personal_key_generation
+    ):
+        return True
+
+    if user_api_key_dict.user_role not in personal_key_generation["allowed_user_roles"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Personal key creation has been restricted by admin. Allowed roles={litellm.key_generation_settings['personal_key_generation']['allowed_user_roles']}. Your role={user_api_key_dict.user_role}",  # type: ignore
+        )
+
+    return True
+
+
+def _personal_key_generation_check(
+    user_api_key_dict: UserAPIKeyAuth, data: GenerateKeyRequest
+):
+
+    if (
+        litellm.key_generation_settings is None
+        or litellm.key_generation_settings.get("personal_key_generation") is None
+    ):
+        return True
+
+    _personal_key_generation = litellm.key_generation_settings["personal_key_generation"]  # type: ignore
+
+    _personal_key_membership_check(
+        user_api_key_dict,
+        personal_key_generation=_personal_key_generation,
+    )
+
+    _key_generation_required_param_check(
+        data,
+        _personal_key_generation.get("required_params"),
+    )
+
+    return True
+
+
+def key_generation_check(
+    team_table: Optional[LiteLLM_TeamTableCachedObj],
+    user_api_key_dict: UserAPIKeyAuth,
+    data: GenerateKeyRequest,
+) -> bool:
+    """
+    Check if admin has restricted key creation to certain roles for teams or individuals
+    """
+    if (
+        litellm.key_generation_settings is None
+        or user_api_key_dict.user_role == LitellmUserRoles.PROXY_ADMIN.value
+    ):
+        return True
+
+    ## check if key is for team or individual
+    is_team_key = _is_team_key(data=data)
+
+    if is_team_key:
+        if team_table is None:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unable to find team object in database. Team ID: {data.team_id}",
+            )
+        return _team_key_generation_check(
+            team_table=team_table,
+            user_api_key_dict=user_api_key_dict,
+            data=data,
+        )
+    else:
+        return _personal_key_generation_check(
+            user_api_key_dict=user_api_key_dict, data=data
+        )
+
 
 router = APIRouter()
 
@@ -115,6 +281,7 @@ async def generate_key_fn(  # noqa: PLR0915
             litellm_proxy_admin_name,
             prisma_client,
             proxy_logging_obj,
+            user_api_key_cache,
             user_custom_key_generate,
         )
 
@@ -131,6 +298,21 @@ async def generate_key_fn(  # noqa: PLR0915
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN, detail=message
                 )
+        elif litellm.key_generation_settings is not None:
+            if data.team_id is None:
+                team_table: Optional[LiteLLM_TeamTableCachedObj] = None
+            else:
+                team_table = await get_team_object(
+                    team_id=data.team_id,
+                    prisma_client=prisma_client,
+                    user_api_key_cache=user_api_key_cache,
+                    parent_otel_span=user_api_key_dict.parent_otel_span,
+                )
+            key_generation_check(
+                team_table=team_table,
+                user_api_key_dict=user_api_key_dict,
+                data=data,
+            )
         # check if user set default key/generate params on config.yaml
         if litellm.default_key_generate_params is not None:
             for elem in data:
@@ -180,10 +362,10 @@ async def generate_key_fn(  # noqa: PLR0915
                                 )
                         # Compare durations
                         elif key in ["budget_duration", "duration"]:
-                            upperbound_duration = _duration_in_seconds(
+                            upperbound_duration = duration_in_seconds(
                                 duration=upperbound_value
                             )
-                            user_duration = _duration_in_seconds(duration=value)
+                            user_duration = duration_in_seconds(duration=value)
                             if user_duration > upperbound_duration:
                                 raise HTTPException(
                                     status_code=400,
@@ -238,6 +420,11 @@ async def generate_key_fn(  # noqa: PLR0915
 
             data_json.pop("tags")
 
+        await _enforce_unique_key_alias(
+            key_alias=data_json.get("key_alias", None),
+            prisma_client=prisma_client,
+        )
+
         response = await generate_key_helper_fn(
             request_type="key", **data_json, table_name="key"
         )
@@ -280,7 +467,7 @@ def prepare_key_update_data(
     if "duration" in non_default_values:
         duration = non_default_values.pop("duration")
         if duration and (isinstance(duration, str)) and len(duration) > 0:
-            duration_s = _duration_in_seconds(duration=duration)
+            duration_s = duration_in_seconds(duration=duration)
             expires = datetime.now(timezone.utc) + timedelta(seconds=duration_s)
             non_default_values["expires"] = expires
 
@@ -291,9 +478,10 @@ def prepare_key_update_data(
             and (isinstance(budget_duration, str))
             and len(budget_duration) > 0
         ):
-            duration_s = _duration_in_seconds(duration=budget_duration)
+            duration_s = duration_in_seconds(duration=budget_duration)
             key_reset_at = datetime.now(timezone.utc) + timedelta(seconds=duration_s)
             non_default_values["budget_reset_at"] = key_reset_at
+            non_default_values["budget_duration"] = budget_duration
 
     _metadata = existing_key_row.metadata or {}
 
@@ -401,6 +589,12 @@ async def update_key_fn(
 
         non_default_values = prepare_key_update_data(
             data=data, existing_key_row=existing_key_row
+        )
+
+        await _enforce_unique_key_alias(
+            key_alias=non_default_values.get("key_alias", None),
+            prisma_client=prisma_client,
+            existing_key_token=existing_key_row.token,
         )
 
         response = await prisma_client.update_data(
@@ -791,19 +985,19 @@ async def generate_key_helper_fn(  # noqa: PLR0915
     if duration is None:  # allow tokens that never expire
         expires = None
     else:
-        duration_s = _duration_in_seconds(duration=duration)
+        duration_s = duration_in_seconds(duration=duration)
         expires = datetime.now(timezone.utc) + timedelta(seconds=duration_s)
 
     if key_budget_duration is None:  # one-time budget
         key_reset_at = None
     else:
-        duration_s = _duration_in_seconds(duration=key_budget_duration)
+        duration_s = duration_in_seconds(duration=key_budget_duration)
         key_reset_at = datetime.now(timezone.utc) + timedelta(seconds=duration_s)
 
     if budget_duration is None:  # one-time budget
         reset_at = None
     else:
-        duration_s = _duration_in_seconds(duration=budget_duration)
+        duration_s = duration_in_seconds(duration=budget_duration)
         reset_at = datetime.now(timezone.utc) + timedelta(seconds=duration_s)
 
     aliases_json = json.dumps(aliases)
@@ -1701,3 +1895,38 @@ async def test_key_logging(
             status="healthy",
             details=f"No logger exceptions triggered, system is healthy. Manually check if logs were sent to {logging_callbacks} ",
         )
+
+
+async def _enforce_unique_key_alias(
+    key_alias: Optional[str],
+    prisma_client: Any,
+    existing_key_token: Optional[str] = None,
+) -> None:
+    """
+    Helper to enforce unique key aliases across all keys.
+
+    Args:
+        key_alias (Optional[str]): The key alias to check
+        prisma_client (Any): Prisma client instance
+        existing_key_token (Optional[str]): ID of existing key being updated, to exclude from uniqueness check
+            (The Admin UI passes key_alias, in all Edit key requests. So we need to be sure that if we find a key with the same alias, it's not the same key we're updating)
+
+    Raises:
+        ProxyException: If key alias already exists on a different key
+    """
+    if key_alias is not None and prisma_client is not None:
+        where_clause: dict[str, Any] = {"key_alias": key_alias}
+        if existing_key_token:
+            # Exclude the current key from the uniqueness check
+            where_clause["NOT"] = {"token": existing_key_token}
+
+        existing_key = await prisma_client.db.litellm_verificationtoken.find_first(
+            where=where_clause
+        )
+        if existing_key is not None:
+            raise ProxyException(
+                message=f"Key with alias '{key_alias}' already exists. Unique key aliases across all keys are required.",
+                type=ProxyErrorTypes.bad_request_error,
+                param="key_alias",
+                code=status.HTTP_400_BAD_REQUEST,
+            )

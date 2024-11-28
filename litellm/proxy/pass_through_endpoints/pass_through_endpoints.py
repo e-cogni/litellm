@@ -22,6 +22,7 @@ import litellm
 from litellm._logging import verbose_proxy_logger
 from litellm.integrations.custom_logger import CustomLogger
 from litellm.litellm_core_utils.litellm_logging import Logging as LiteLLMLoggingObj
+from litellm.llms.custom_httpx.http_handler import get_async_httpx_client
 from litellm.llms.vertex_ai_and_google_ai_studio.gemini.vertex_and_google_ai_studio_gemini import (
     ModelResponseIterator,
 )
@@ -35,8 +36,9 @@ from litellm.proxy._types import (
 )
 from litellm.proxy.auth.user_api_key_auth import user_api_key_auth
 from litellm.secret_managers.main import get_secret_str
+from litellm.types.llms.custom_http import httpxSpecialProvider
 
-from .streaming_handler import chunk_processor
+from .streaming_handler import PassThroughStreamingHandler
 from .success_handler import PassThroughEndpointLogging
 from .types import EndpointType, PassthroughStandardLoggingPayload
 
@@ -363,8 +365,11 @@ async def pass_through_request(  # noqa: PLR0915
             data=_parsed_body,
             call_type="pass_through_endpoint",
         )
-
-        async_client = httpx.AsyncClient(timeout=600)
+        async_client_obj = get_async_httpx_client(
+            llm_provider=httpxSpecialProvider.PassThroughEndpoint,
+            params={"timeout": 600},
+        )
+        async_client = async_client_obj.client
 
         litellm_call_id = str(uuid.uuid4())
 
@@ -388,6 +393,7 @@ async def pass_through_request(  # noqa: PLR0915
             _parsed_body=_parsed_body,
             passthrough_logging_payload=passthrough_logging_payload,
             litellm_call_id=litellm_call_id,
+            request=request,
         )
         # done for supporting 'parallel_request_limiter.py' with pass-through endpoints
         logging_obj.update_environment_variables(
@@ -448,7 +454,7 @@ async def pass_through_request(  # noqa: PLR0915
                 )
 
             return StreamingResponse(
-                chunk_processor(
+                PassThroughStreamingHandler.chunk_processor(
                     response=response,
                     request_body=_parsed_body,
                     litellm_logging_obj=logging_obj,
@@ -491,7 +497,7 @@ async def pass_through_request(  # noqa: PLR0915
                 )
 
             return StreamingResponse(
-                chunk_processor(
+                PassThroughStreamingHandler.chunk_processor(
                     response=response,
                     request_body=_parsed_body,
                     litellm_logging_obj=logging_obj,
@@ -523,16 +529,18 @@ async def pass_through_request(  # noqa: PLR0915
         response_body: Optional[dict] = get_response_body(response)
         passthrough_logging_payload["response_body"] = response_body
         end_time = datetime.now()
-        await pass_through_endpoint_logging.pass_through_async_success_handler(
-            httpx_response=response,
-            response_body=response_body,
-            url_route=str(url),
-            result="",
-            start_time=start_time,
-            end_time=end_time,
-            logging_obj=logging_obj,
-            cache_hit=False,
-            **kwargs,
+        asyncio.create_task(
+            pass_through_endpoint_logging.pass_through_async_success_handler(
+                httpx_response=response,
+                response_body=response_body,
+                url_route=str(url),
+                result="",
+                start_time=start_time,
+                end_time=end_time,
+                logging_obj=logging_obj,
+                cache_hit=False,
+                **kwargs,
+            )
         )
 
         return Response(
@@ -567,6 +575,7 @@ async def pass_through_request(  # noqa: PLR0915
 
 
 def _init_kwargs_for_pass_through_endpoint(
+    request: Request,
     user_api_key_dict: UserAPIKeyAuth,
     passthrough_logging_payload: PassthroughStandardLoggingPayload,
     _parsed_body: Optional[dict] = None,
@@ -582,6 +591,12 @@ def _init_kwargs_for_pass_through_endpoint(
     }
     if _litellm_metadata:
         _metadata.update(_litellm_metadata)
+
+    _metadata = _update_metadata_with_tags_in_header(
+        request=request,
+        metadata=_metadata,
+    )
+
     kwargs = {
         "litellm_params": {
             "metadata": _metadata,
@@ -591,6 +606,18 @@ def _init_kwargs_for_pass_through_endpoint(
         "passthrough_logging_payload": passthrough_logging_payload,
     }
     return kwargs
+
+
+def _update_metadata_with_tags_in_header(request: Request, metadata: dict) -> dict:
+    """
+    If tags are in the request headers, add them to the metadata
+
+    Used for google and vertex JS SDKs
+    """
+    _tags = request.headers.get("tags")
+    if _tags:
+        metadata["tags"] = _tags.split(",")
+    return metadata
 
 
 def create_pass_through_route(

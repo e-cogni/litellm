@@ -30,12 +30,16 @@ const sidebars = {
       items: [
         "proxy/docker_quick_start", 
         {
+          "type": "category", 
+          "label": "Config.yaml",
+          "items": ["proxy/configs", "proxy/config_management", "proxy/config_settings"]
+        },
+        {
           type: "category",
           label: "Setup & Deployment",
           items: [
             "proxy/deploy", 
             "proxy/prod", 
-            "proxy/configs", 
             "proxy/cli",
             "proxy/model_management",
             "proxy/health",
@@ -47,7 +51,7 @@ const sidebars = {
         {
           type: "category",
           label: "Architecture",
-          items: ["proxy/architecture", "proxy/db_info"],
+          items: ["proxy/architecture", "proxy/db_info", "router_architecture"],
         }, 
         {
           type: "link",
@@ -96,11 +100,10 @@ const sidebars = {
           label: "Spend Tracking + Budgets",
           items: ["proxy/cost_tracking", "proxy/users", "proxy/custom_pricing", "proxy/team_budgets", "proxy/billing", "proxy/customers"],
         },
-        "proxy/reliability",
         {
-          type: "category",
-          label: "Routing",
-          items: ["proxy/load_balancing", "proxy/tag_routing", "proxy/provider_budget_routing", "proxy/team_based_routing", "proxy/customer_routing",],
+          type: "link",
+          label: "Load Balancing, Routing, Fallbacks",
+          href: "https://docs.litellm.ai/docs/routing-load-balancing",
         },
         {
           type: "category",
@@ -201,6 +204,31 @@ const sidebars = {
     },
     {
       type: "category",
+      label: "Guides",
+      items: [
+        "exception_mapping",
+        "completion/provider_specific_params",
+        "guides/finetuned_models",
+        "completion/audio",
+        "completion/vision",
+        "completion/json_mode",
+        "completion/prompt_caching",
+        "completion/predict_outputs",
+        "completion/prefix",
+        "completion/drop_params",
+        "completion/prompt_formatting",
+        "completion/stream",
+        "completion/message_trimming",
+        "completion/function_call",
+        "completion/model_alias",
+        "completion/batching",
+        "completion/mock_requests",
+        "completion/reliable_completions",
+        
+      ]
+    },
+    {
+      type: "category",
       label: "Supported Endpoints",
       items: [
         {
@@ -214,27 +242,11 @@ const sidebars = {
           },
           items: [
             "completion/input",
-            "completion/provider_specific_params",
-            "completion/json_mode",
-            "completion/prompt_caching",
-            "completion/audio",
-            "completion/vision",
-            "completion/predict_outputs",
-            "completion/prefix",
-            "completion/drop_params",
-            "completion/prompt_formatting",
             "completion/output",
             "completion/usage",
-            "exception_mapping",
-            "completion/stream",
-            "completion/message_trimming",
-            "completion/function_call",
-            "completion/model_alias",
-            "completion/batching",
-            "completion/mock_requests",
-            "completion/reliable_completions",
           ],
         },
+        "text_completion",
         "embedding/supported_embedding",
         "image_generation",
         {
@@ -250,6 +262,7 @@ const sidebars = {
         "batches",
         "realtime",
         "fine_tuning",
+        "moderation",
         {
           type: "link",
           label: "Use LiteLLM Proxy with Vertex, Bedrock SDK",
@@ -259,8 +272,14 @@ const sidebars = {
     },
     {
       type: "category",
-      label: "Load Balancing",
-      items: ["routing", "scheduler"],
+      label: "Routing, Loadbalancing & Fallbacks",
+      link: {
+        type: "generated-index",
+        title: "Routing, Loadbalancing & Fallbacks",
+        description: "Learn how to load balance, route, and set fallbacks for your LLM requests",
+        slug: "/routing-load-balancing",
+      },
+      items: ["routing", "scheduler", "proxy/load_balancing", "proxy/reliability", "proxy/tag_routing", "proxy/provider_budget_routing", "proxy/team_based_routing", "proxy/customer_routing", "wildcard_routing"],
     },
     {
       type: "category",

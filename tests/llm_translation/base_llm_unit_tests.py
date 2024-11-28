@@ -62,7 +62,14 @@ class BaseLLMChatTest(ABC):
         response = litellm.completion(**base_completion_call_args, messages=messages)
         assert response is not None
 
-    def test_json_response_format(self):
+    @pytest.mark.parametrize(
+        "response_format",
+        [
+            {"type": "json_object"},
+            {"type": "text"},
+        ],
+    )
+    def test_json_response_format(self, response_format):
         """
         Test that the JSON response format is supported by the LLM API
         """
@@ -83,7 +90,7 @@ class BaseLLMChatTest(ABC):
         response = litellm.completion(
             **base_completion_call_args,
             messages=messages,
-            response_format={"type": "json_object"},
+            response_format=response_format,
         )
 
         print(response)
@@ -189,6 +196,35 @@ class BaseLLMChatTest(ABC):
     def test_tool_call_no_arguments(self, tool_call_no_arguments):
         """Test that tool calls with no arguments is translated correctly. Relevant issue: https://github.com/BerriAI/litellm/issues/6833"""
         pass
+
+    def test_image_url(self):
+        litellm.set_verbose = True
+        from litellm.utils import supports_vision
+
+        os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
+        litellm.model_cost = litellm.get_model_cost_map(url="")
+
+        base_completion_call_args = self.get_base_completion_call_args()
+        if not supports_vision(base_completion_call_args["model"], None):
+            pytest.skip("Model does not support image input")
+
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "What's in this image?"},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": "https://i.pinimg.com/736x/b4/b1/be/b4b1becad04d03a9071db2817fc9fe77.jpg"
+                        },
+                    },
+                ],
+            }
+        ]
+
+        response = litellm.completion(**base_completion_call_args, messages=messages)
+        assert response is not None
 
     @pytest.fixture
     def pdf_messages(self):

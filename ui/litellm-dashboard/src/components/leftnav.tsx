@@ -7,7 +7,7 @@ const { Sider } = Layout;
 
 // Define the props type
 interface SidebarProps {
-  setPage: React.Dispatch<React.SetStateAction<string>>;
+  setPage: (page: string) => void;
   userRole: string;
   defaultSelectedKey: string;
 }
@@ -32,7 +32,7 @@ const menuItems: MenuItem[] = [
   { key: "3", page: "llm-playground", label: "Test Key" }, // all roles
   { key: "2", page: "models", label: "Models", roles: all_admin_roles },
   { key: "4", page: "usage", label: "Usage"}, // all roles
-  { key: "6", page: "teams", label: "Teams", roles: all_admin_roles },
+  { key: "6", page: "teams", label: "Teams" },
   { key: "5", page: "users", label: "Internal Users", roles: all_admin_roles },
   { key: "8", page: "settings", label: "Logging & Alerts", roles: all_admin_roles },
   { key: "9", page: "caching", label: "Caching", roles: all_admin_roles },
@@ -67,9 +67,17 @@ const Sidebar: React.FC<SidebarProps> = ({
           style={{ height: "100%", borderRight: 0 }}
         >
           {filteredMenuItems.map(item => (
-            <Menu.Item key={item.key} onClick={() => setPage(item.page)}>
-              <Text>{item.label}</Text>
-            </Menu.Item>
+            <Menu.Item 
+            key={item.key} 
+            onClick={() => {
+              const newSearchParams = new URLSearchParams(window.location.search);
+              newSearchParams.set('page', item.page);
+              window.history.pushState(null, '', `?${newSearchParams.toString()}`);
+              setPage(item.page);
+            }}
+          >
+            <Text>{item.label}</Text>
+          </Menu.Item>
           ))}
         </Menu>
       </Sider>
