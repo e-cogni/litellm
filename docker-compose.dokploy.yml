@@ -1,0 +1,43 @@
+version: "3.11"
+services:
+  litellm:
+    build:
+      context: .
+      args:
+        target: runtime
+    image: ghcr.io/berriai/litellm:main-stable
+    restart: always
+    #########################################
+    ## Uncomment these lines to start proxy with a config.yaml file ##
+    volumes:
+     - ./config.yaml:/app/config.yaml
+    # The below two are my suggestion
+    command:
+     - "--config=/app/config.yaml"
+     - "--port=${PROXY_PORT}"
+     - "--num_workers=${NUM_WORKERS}"
+    ##############################################
+    #########################################
+    ## Uncomment these lines to start proxy with a config.yaml file ##
+    # volumes:
+    ###############################################
+    networks:
+      - dokploy-network
+    expose:
+      - ${PROXY_PORT}
+    env_file:
+      - .env
+
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.${HASH}.entrypoints=websecure
+      - traefik.http.routers.${HASH}.tls.certResolver=cloudflare
+      - traefik.http.routers.${HASH}.rule=Host(`${PROXY_HOST}`)
+      - traefik.http.services.${HASH}.loadbalancer.server.port=${PROXY_PORT}
+
+  
+networks:
+  dokploy-network:
+    external: true
+
+# ...rest of your docker-compose config if any
