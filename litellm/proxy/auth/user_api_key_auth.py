@@ -35,6 +35,7 @@ from litellm.proxy.auth.auth_checks import (
 )
 from litellm.proxy.auth.auth_utils import (
     _get_request_ip_address,
+    get_end_user_id_from_request_body,
     get_request_route,
     is_pass_through_provider_route,
     pre_db_read_auth_checks,
@@ -154,6 +155,7 @@ def _is_allowed_route(
     """
     - Route b/w ui token check and normal token check
     """
+
     if token_type == "ui" and _is_ui_route(route=route, user_obj=user_obj):
         return True
     else:
@@ -213,17 +215,25 @@ async def user_api_key_auth_websocket(websocket: WebSocket):
         raise HTTPException(status_code=403, detail=str(e))
 
 
-async def user_api_key_auth(  # noqa: PLR0915
-    request: Request,
-    api_key: str = fastapi.Security(api_key_header),
-    azure_api_key_header: str = fastapi.Security(azure_api_key_header),
-    anthropic_api_key_header: Optional[str] = fastapi.Security(
-        anthropic_api_key_header
-    ),
-    google_ai_studio_api_key_header: Optional[str] = fastapi.Security(
-        google_ai_studio_api_key_header
-    ),
+def update_valid_token_with_end_user_params(
+    valid_token: UserAPIKeyAuth, end_user_params: dict
 ) -> UserAPIKeyAuth:
+    valid_token.end_user_id = end_user_params.get("end_user_id")
+    valid_token.end_user_tpm_limit = end_user_params.get("end_user_tpm_limit")
+    valid_token.end_user_rpm_limit = end_user_params.get("end_user_rpm_limit")
+    valid_token.allowed_model_region = end_user_params.get("allowed_model_region")
+    return valid_token
+
+
+async def _user_api_key_auth_builder(  # noqa: PLR0915
+    request: Request,
+    api_key: str,
+    azure_api_key_header: str,
+    anthropic_api_key_header: Optional[str],
+    google_ai_studio_api_key_header: Optional[str],
+    request_data: dict,
+) -> UserAPIKeyAuth:
+
     from litellm.proxy.proxy_server import (
         general_settings,
         jwt_handler,
@@ -243,8 +253,9 @@ async def user_api_key_auth(  # noqa: PLR0915
     start_time = datetime.now()
     route: str = get_request_route(request=request)
     try:
+
         # get the request body
-        request_data = await _read_request_body(request=request)
+
         await pre_db_read_auth_checks(
             request_data=request_data,
             request=request,
@@ -608,9 +619,10 @@ async def user_api_key_auth(  # noqa: PLR0915
         ## Check END-USER OBJECT
         _end_user_object = None
         end_user_params = {}
-        if "user" in request_data:
+
+        end_user_id = get_end_user_id_from_request_body(request_data)
+        if end_user_id:
             try:
-                end_user_id = request_data["user"]
                 end_user_params["end_user_id"] = end_user_id
 
                 # get end-user object
@@ -671,11 +683,8 @@ async def user_api_key_auth(  # noqa: PLR0915
             and valid_token.user_role == LitellmUserRoles.PROXY_ADMIN
         ):
             # update end-user params on valid token
-            valid_token.end_user_id = end_user_params.get("end_user_id")
-            valid_token.end_user_tpm_limit = end_user_params.get("end_user_tpm_limit")
-            valid_token.end_user_rpm_limit = end_user_params.get("end_user_rpm_limit")
-            valid_token.allowed_model_region = end_user_params.get(
-                "allowed_model_region"
+            valid_token = update_valid_token_with_end_user_params(
+                valid_token=valid_token, end_user_params=end_user_params
             )
             valid_token.parent_otel_span = parent_otel_span
 
@@ -753,6 +762,10 @@ async def user_api_key_auth(  # noqa: PLR0915
                 )
             )
 
+            _user_api_key_obj = update_valid_token_with_end_user_params(
+                valid_token=_user_api_key_obj, end_user_params=end_user_params
+            )
+
             return _user_api_key_obj
 
         ## IF it's not a master key
@@ -811,7 +824,10 @@ async def user_api_key_auth(  # noqa: PLR0915
                 valid_token.allowed_model_region = end_user_params.get(
                     "allowed_model_region"
                 )
-
+                # update key budget with temp budget increase
+                valid_token = _update_key_budget_with_temp_budget_increase(
+                    valid_token
+                )  # updating it here, allows all downstream reporting / checks to use the updated budget
             except Exception:
                 verbose_logger.info(
                     "litellm.proxy.auth.user_api_key_auth.py::user_api_key_auth() - Unable to find token={} in cache or `LiteLLM_VerificationTokenTable`. Defaulting 'valid_token' to None'".format(
@@ -1016,6 +1032,7 @@ async def user_api_key_auth(  # noqa: PLR0915
                         current_cost=valid_token.spend,
                         max_budget=valid_token.max_budget,
                     )
+
             if valid_token.soft_budget and valid_token.spend >= valid_token.soft_budget:
                 verbose_proxy_logger.debug(
                     "Crossed Soft Budget for token %s, spend %s, soft_budget %s",
@@ -1231,7 +1248,6 @@ async def user_api_key_auth(  # noqa: PLR0915
             parent_otel_span=parent_otel_span,
             api_key=api_key,
         )
-        request_data = await _read_request_body(request=request)
         asyncio.create_task(
             proxy_logging_obj.post_call_failure_hook(
                 request_data=request_data,
@@ -1264,6 +1280,39 @@ async def user_api_key_auth(  # noqa: PLR0915
             param=getattr(e, "param", "None"),
             code=status.HTTP_401_UNAUTHORIZED,
         )
+
+
+async def user_api_key_auth(
+    request: Request,
+    api_key: str = fastapi.Security(api_key_header),
+    azure_api_key_header: str = fastapi.Security(azure_api_key_header),
+    anthropic_api_key_header: Optional[str] = fastapi.Security(
+        anthropic_api_key_header
+    ),
+    google_ai_studio_api_key_header: Optional[str] = fastapi.Security(
+        google_ai_studio_api_key_header
+    ),
+) -> UserAPIKeyAuth:
+    """
+    Parent function to authenticate user api key / jwt token.
+    """
+
+    request_data = await _read_request_body(request=request)
+
+    user_api_key_auth_obj = await _user_api_key_auth_builder(
+        request=request,
+        api_key=api_key,
+        azure_api_key_header=azure_api_key_header,
+        anthropic_api_key_header=anthropic_api_key_header,
+        google_ai_studio_api_key_header=google_ai_studio_api_key_header,
+        request_data=request_data,
+    )
+
+    end_user_id = get_end_user_id_from_request_body(request_data)
+    if end_user_id is not None:
+        user_api_key_auth_obj.end_user_id = end_user_id
+
+    return user_api_key_auth_obj
 
 
 async def _return_user_api_key_auth_obj(
@@ -1383,3 +1432,25 @@ def get_api_key_from_custom_header(
             f"No LiteLLM Virtual Key pass. Please set header={custom_litellm_key_header_name}: Bearer <api_key>"
         )
     return api_key
+
+
+def _get_temp_budget_increase(valid_token: UserAPIKeyAuth):
+    valid_token_metadata = valid_token.metadata
+    if (
+        "temp_budget_increase" in valid_token_metadata
+        and "temp_budget_expiry" in valid_token_metadata
+    ):
+        expiry = datetime.fromisoformat(valid_token_metadata["temp_budget_expiry"])
+        if expiry > datetime.now():
+            return valid_token_metadata["temp_budget_increase"]
+    return None
+
+
+def _update_key_budget_with_temp_budget_increase(
+    valid_token: UserAPIKeyAuth,
+) -> UserAPIKeyAuth:
+    if valid_token.max_budget is None:
+        return valid_token
+    temp_budget_increase = _get_temp_budget_increase(valid_token) or 0.0
+    valid_token.max_budget = valid_token.max_budget + temp_budget_increase
+    return valid_token
