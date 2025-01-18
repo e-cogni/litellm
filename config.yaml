@@ -129,6 +129,11 @@ model_list:
       model: "github/Phi-3.5-MoE-instruct"
       api_key: os.environ/GITHUB_API_KEY
       rpm: 10
+  - model_name: "Phi-4"
+    litellm_params:
+      model: "github/Phi-4"
+      api_key: os.environ/GITHUB_API_KEY
+      rpm: 10
   - model_name: "gpt-4o"
     litellm_params:
       model: "github/gpt-4o"
